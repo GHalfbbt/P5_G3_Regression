@@ -42,6 +42,7 @@ P5_G3_Regression/
 - **Fuente:** Life Expectancy Dataset (Kaggle / WHO).  
 - **Variable objetivo:** Esperanza de vida (años).  
 - **Características:** gasto en salud, mortalidad infantil, factores demográficos, socioeconómicos, etc.
+
 🔗 [Dataset Life Expectancy Kaggle](https://www.kaggle.com/code/wrecked22/life-expectancy-regression)
 
 ---
