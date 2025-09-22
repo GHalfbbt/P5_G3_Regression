@@ -1,9 +1,8 @@
 # 📊 P5_G3_Regression
-
-Proyecto grupal de Machine Learning dentro del bootcamp de IA deFactoría F5.  
+.
+Proyecto grupal de Machine Learning dentro del bootcamp de IA de [Factoría F5 – Web Oficial](https://factoriaf5.org/)  
 Nuestro objetivo es **predecir la esperanza de vida** a partir de indicadores socioeconómicos y sanitarios, comparando distintos algoritmos de regresión.
 
-🔗 [Factoría F5 – Web Oficial](https://factoriaf5.org/)
 
 ---
 
