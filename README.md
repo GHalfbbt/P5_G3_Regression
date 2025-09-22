@@ -17,14 +17,10 @@ Nuestro objetivo es **predecir la esperanza de vida** a partir de indicadores so
 👥 Autores
 
     
-    [Umit Gungor](https://github.com/GungorUmit) 
-    Data Analyst & Python Developer 
-    [Johi Ortiz Vallejos](https://github.com/johiortiz) 
-    Data Analyst & Python Developer
-    [Yeder Pimentel](https://github.com/Yedpt) 
-    Data Analyst & Python Developer 
-    [Alfonso Bermúdez Torres](https://github.com/GHalfbbt) 
-    Data Analyst & Python Developer 
+- [Umit Gungor](https://github.com/GungorUmit) — Data Analyst & Python Developer  
+- [Johi Ortiz Vallejos](https://github.com/johiortiz) — Data Analyst & Python Developer  
+- [Yeder Pimentel](https://github.com/Yedpt) — Data Analyst & Python Developer  
+- [Alfonso Bermúdez Torres](https://github.com/GHalfbbt) — Data Analyst & Python Developer
 
 ---
 
