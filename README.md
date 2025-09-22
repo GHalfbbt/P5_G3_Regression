@@ -15,6 +15,7 @@ Nuestro objetivo es **predecir la esperanza de vida** a partir de indicadores so
 ---
 
 ## 📂 Estructura del repositorio
+```bash
 P5_G3_Regression/
 │── data/ # datasets (train/test)
 │── notebooks/ # notebooks de cada compañero
@@ -25,7 +26,7 @@ P5_G3_Regression/
 │── src/ # funciones auxiliares en Python (opcional)
 │── requirements.txt # dependencias del proyecto
 │── README.md # descripción del proyecto
-
+```
 
 ---
 
