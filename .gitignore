@@ -49,6 +49,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Dataframes / datasets
+data/*
+!data/life_expectancy_data.csv
+
 
 # -------- Src --------
 src/**/__pycache__/
@@ -57,4 +61,5 @@ src/**/__pycache__/
 *.log
 *.tmp
 *.cache/
+
 

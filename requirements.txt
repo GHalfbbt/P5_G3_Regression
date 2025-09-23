@@ -9,3 +9,4 @@ optuna
 jupyterlab
 ipykernel
 tabulate
+missingno
