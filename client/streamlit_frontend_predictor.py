@@ -1,242 +1,366 @@
-# Streamlit frontend para predicciones (con backend FastAPI)
-# Archivo: streamlit_frontend_predictor.py
-# Uso: streamlit run streamlit_frontend_predictor.py
+# client/streamlit_frontend_predictor.py
+# Modern + colorful Streamlit frontend for model predictions (Esperanza de Vida)
+# Run: streamlit run client/streamlit_frontend_predictor.py
 
 import streamlit as st
 import requests
 import pandas as pd
 import json
 import plotly.express as px
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-# Config página
-st.set_page_config(page_title="Model Playground - Predict", layout="wide", initial_sidebar_state="expanded")
+# ---------------------------
+# Page configuration
+# ---------------------------
+st.set_page_config(
+    page_title="Esperanza de Vida — Model Playground",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- Estilos mínimos para un look más "moderno" ---
+# ---------------------------
+# Modern colorful CSS
+# ---------------------------
 st.markdown(
     """
-    <style>
-    .appview-container .main .block-container{padding-top:1rem}
-    .stButton>button {border-radius: 8px}
-    .stMetric > div {background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)); padding: 12px; border-radius: 10px}
-    </style>
-    """,
+<style>
+/* Background gradient for the main app area */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(180deg, #0f1724 0%, #0b2545 40%, #07132a 100%);
+    color: #e6eef8;
+}
+
+/* Sidebar gradient and styling */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #061226 0%, #08263a 50%, #0b3a4d 100%);
+    color: #f1f7ff;
+    padding-top: 1rem;
+}
+
+/* Title inside sidebar */
+section[data-testid="stSidebar"] .css-1d391kg { 
+    color: #fff;
+}
+
+/* Button gradient in sidebar */
+section[data-testid="stSidebar"] .stButton>button {
+    background: linear-gradient(90deg,#36d1dc,#5b86e5);
+    color: white;
+    border-radius: 12px;
+    padding: 8px 10px;
+    font-weight: 600;
+    border: none;
+    box-shadow: 0 6px 18px rgba(91,134,229,0.18);
+}
+section[data-testid="stSidebar"] .stButton>button:hover {
+    transform: translateY(-2px);
+}
+
+/* Primary buttons in main area */
+.stButton>button {
+    background: linear-gradient(90deg,#ff6a00,#ee0979);
+    color: white;
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-weight: 600;
+    border: none;
+    box-shadow: 0 6px 18px rgba(238,9,121,0.12);
+}
+.stButton>button:hover {
+    transform: translateY(-2px);
+}
+
+/* Cards/metrics style */
+.stMetric > div {
+    background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+    padding: 12px;
+    border-radius: 12px;
+    color: #f7fbff;
+    box-shadow: 0 8px 24px rgba(2,6,23,0.6);
+}
+
+/* Headings color */
+h1, h2, h3, h4, h5 {
+    color: #f3f9ff;
+}
+
+/* Tables backgrounds */
+.stDataFrame table {
+    background: rgba(255,255,255,0.02);
+}
+
+/* Small helper tweaks */
+.css-1lcbmhc { gap: .6rem; }
+</style>
+""",
     unsafe_allow_html=True,
 )
 
-st.title("🔮 Model Playground — Predicciones (Streamlit)")
-st.write("Interfaz para enviar una muestra de features al backend (FastAPI) y obtener predicciones de distintos modelos.")
-
-# Sidebar: configuración
-with st.sidebar:
-    st.header("Configuración")
-    backend_url = st.text_input("Backend base URL", value="http://localhost:8000")
-    st.caption("El backend debe exponer /metadata, /models y /predict (ej.: POST /predict)")
-    st.markdown("---")
-    st.subheader("Opciones")
-    compare_all = st.checkbox("Comparar todos los modelos disponibles (si el backend los soporta)", value=True)
-    st.markdown("---")
-    st.info("Asegúrate de que el backend permite CORS para este origen si está en distinto host/puerto.")
-
-# Utilities
+# ---------------------------
+# Utility functions (backend talk)
+# ---------------------------
 @st.cache_data(ttl=60)
-def fetch_metadata(url: str):
-    """Intenta obtener metadata desde el backend: /metadata
-    Esperado: {"feature_names": [...], "feature_info": {feat: {"type":"numeric"/"categorical","min":..,"max":..,"categories":[..]}}}
-    """
+def get_json(url: str, path: str, timeout: int = 4) -> Optional[dict]:
     try:
-        r = requests.get(url.rstrip("/") + "/metadata", timeout=4)
+        r = requests.get(url.rstrip("/") + path, timeout=timeout)
         if r.status_code == 200:
             return r.json()
     except Exception:
         return None
     return None
 
-@st.cache_data(ttl=60)
-def fetch_models(url: str):
+def post_json(url: str, path: str, body: dict, timeout: int = 8) -> dict:
     try:
-        r = requests.get(url.rstrip("/") + "/models", timeout=4)
-        if r.status_code == 200:
-            return r.json()
-    except Exception:
-        return None
-    return None
-
-
-def build_input_widgets(feature_info: Dict[str, Any]):
-    """Construye widgets dinámicos a partir de feature_info y devuelve un dict con valores.
-    feature_info example:
-    {"feat1": {"type":"numeric","min":0,"max":10,"default":1.2},
-     "feat2": {"type":"categorical","categories":["a","b"]}}
-    """
-    inputs = {}
-    st.subheader("Valores de entrada")
-    cols = st.columns(2)
-    i = 0
-    for feat, info in feature_info.items():
-        col = cols[i % 2]
-        with col:
-            if info.get("type") == "numeric":
-                vmin = info.get("min", -1e6)
-                vmax = info.get("max", 1e6)
-                default = info.get("default", (vmin if vmin>-1e5 else 0.0))
-                step = info.get("step", None)
-                if step:
-                    val = col.number_input(feat, min_value=float(vmin), max_value=float(vmax), value=float(default), step=float(step))
-                else:
-                    val = col.number_input(feat, min_value=float(vmin), max_value=float(vmax), value=float(default))
-                inputs[feat] = float(val)
-
-            elif info.get("type") == "categorical":
-                cats = info.get("categories", [])
-                if len(cats) > 0:
-                    val = col.selectbox(feat, options=cats)
-                    inputs[feat] = val
-                else:
-                    val = col.text_input(feat, value="")
-                    inputs[feat] = val
-
-            elif info.get("type") == "boolean":
-                val = col.checkbox(feat, value=bool(info.get("default", False)))
-                inputs[feat] = bool(val)
-
-            else:
-                # fallback: texto
-                val = col.text_input(feat, value=str(info.get("default", "")))
-                inputs[feat] = val
-
-        i += 1
-
-    return inputs
-
-
-def predict_one(url: str, model: str, payload: dict):
-    endpoint = url.rstrip("/") + "/predict"
-    body = {"model": model, "input": payload}
-    try:
-        r = requests.post(endpoint, json=body, timeout=6)
+        r = requests.post(url.rstrip("/") + path, json=body, timeout=timeout)
         if r.status_code == 200:
             return r.json()
         else:
-            return {"error": f"Status {r.status_code}", "text": r.text}
+            return {"_error": True, "status": r.status_code, "text": r.text}
     except Exception as e:
-        return {"error": str(e)}
+        return {"_error": True, "text": str(e)}
 
+# ---------------------------
+# Sidebar: menu and controls
+# ---------------------------
+with st.sidebar:
+    st.title("🔬 Model Playground")
+    st.markdown("Selecciona un algoritmo para ver información y realizar predicciones.")
+    backend_url = st.text_input("Backend base URL", value="http://localhost:8000")
+    st.caption("El backend debe exponer GET /metadata, GET /models, POST /predict. Opcional: /dataset, /model_info/{model}")
+    st.markdown("---")
 
-# --- Obtener metadata y modelos disponibles desde backend (si existe) ---
-metadata = fetch_metadata(backend_url)
-models_meta = fetch_models(backend_url)
+    model_menu = st.radio(
+        "Algoritmos",
+        options=[
+            "Regresión Lineal",
+            "Ridge / Lasso / ElasticNet",
+            "Árbol de Decisión",
+            "Random Forest",
+            "XGBoost"
+        ],
+        index=0
+    )
 
-if metadata is None:
-    st.warning("No se pudo obtener metadata desde el backend. Puedes introducir manualmente la especificación de features en el panel de abajo.")
+    st.markdown("---")
+    compare_all = st.checkbox("Comparar todos los modelos detectados", value=False)
+    show_details = st.checkbox("Mostrar coeficientes/importancias (si disponibles)", value=True)
+    st.markdown("---")
+    calc_button = st.button("🧾 Calcula tu esperanza de vida")
 
-# Panel para entrada manual en caso de ausencia de metadata
-if metadata is None:
-    st.subheader("Especificación manual de features (JSON) — alternativa")
-    st.caption('Introduce JSON con la forma {"feat1": {"type":"numeric","min":0,"max":10,"default":1}, ... }')
-    manual_spec = st.text_area("Feature spec JSON", height=160, value='{}')
-    try:
-        feature_info = json.loads(manual_spec) if manual_spec.strip() else {}
-    except Exception:
-        st.error("JSON inválido")
-        feature_info = {}
-else:
-    feature_info = metadata.get("feature_info", {})
-
-# Si no hay feature_info pero metadata contiene feature_names, creamos spec simple
-if not feature_info and metadata is not None:
-    fnames = metadata.get("feature_names", [])
-    feature_info = {f: {"type": "numeric", "min": 0.0, "max": 1.0, "default": 0.0} for f in fnames}
-
-# Construir inputs
-if feature_info:
-    input_values = build_input_widgets(feature_info)
-else:
-    st.info("No hay features definidos. Especifica la metadata o usa la entrada manual JSON para enviar requests.")
-    input_values = {}
-
-# Selección de modelo
-st.sidebar.markdown("---")
+# ---------------------------
+# Resolve available models
+# ---------------------------
+models_meta = get_json(backend_url, "/models")
 if models_meta and isinstance(models_meta, dict):
     available_models = models_meta.get("models", [])
-    if compare_all:
-        selected_models = available_models
-        st.sidebar.write(f"Modelos detectados: {', '.join(available_models)}")
-    else:
-        sel = st.sidebar.selectbox("Modelo", options=available_models)
-        selected_models = [sel]
 else:
-    # fallback a los 4 que tenemos en el notebook: linear, ridge, lasso, elasticnet
-    default_models = ["linear", "ridge", "lasso", "elasticnet"]
-    sel = st.sidebar.multiselect("Modelos (manual)", options=default_models, default=["linear"]) if compare_all else st.sidebar.selectbox("Modelo", options=default_models)
-    if isinstance(sel, list):
-        selected_models = sel
-    else:
-        selected_models = [sel]
+    # fallback defaults
+    available_models = ["linear", "ridge", "lasso", "elasticnet", "decision_tree", "random_forest", "xgboost"]
 
-# Button para predecir
-if st.button("Enviar petición de predicción 🚀"):
-    if not input_values:
-        st.error("No hay valores de entrada. Revisa la metadata o introduce manualmente los inputs.")
-    else:
-        predictions = []
-        for m in selected_models:
-            resp = predict_one(backend_url, m, input_values)
-            # Manejo de respuesta: se espera {'prediction': value, 'model':..., 'metrics': {...}}
-            if resp is None:
-                st.error(f"Respuesta vacía para el modelo {m}")
-                continue
-            if "error" in resp:
-                st.error(f"Error al pedir {m}: {resp.get('error')} - {resp.get('text', '')}")
-                continue
-            pred = resp.get("prediction") if "prediction" in resp else resp
-            metrics = resp.get("metrics") if isinstance(resp, dict) else None
-            predictions.append({"model": m, "prediction": pred, "raw": resp, "metrics": metrics})
+menu_map = {
+    "Regresión Lineal": ["linear"],
+    "Ridge / Lasso / ElasticNet": ["ridge", "lasso", "elasticnet"],
+    "Árbol de Decisión": ["decision_tree"],
+    "Random Forest": ["random_forest"],
+    "XGBoost": ["xgboost"]
+}
 
-        if predictions:
-            dfpred = pd.DataFrame([{"Modelo": p["model"], "Predicción": p["prediction"]} for p in predictions])
-            st.subheader("Resultados")
-            c1, c2 = st.columns([1,2])
-            with c1:
-                for p in predictions:
-                    st.metric(label=f"{p['model']} → predicción", value=str(p['prediction']))
-            with c2:
-                fig = px.bar(dfpred, x="Modelo", y="Predicción", title="Comparativa de predicciones por modelo")
+selected_models = menu_map.get(model_menu, ["linear"])
+if compare_all:
+    selected_models = available_models
+
+# ---------------------------
+# Main layout
+# ---------------------------
+st.header("🌍 Esperanza de Vida — Dashboard Interactivo")
+st.write("Explora modelos, visualizaciones del dataset y calcula tu esperanza de vida con distintos algoritmos.")
+
+left, right = st.columns([2, 1])
+
+# ---------------------------
+# Left column: dataset, model info, visuals
+# ---------------------------
+with left:
+    st.subheader("Resumen del dataset")
+    dataset_json = get_json(backend_url, "/dataset")  # optional endpoint
+    if dataset_json:
+        try:
+            sample = pd.DataFrame(dataset_json.get("sample", []))
+            stats = dataset_json.get("stats", {})
+            target_col = dataset_json.get("target_col", None)
+            if not sample.empty:
+                st.markdown("**Muestra del dataset**")
+                st.dataframe(sample.head(10), use_container_width=True)
+            if stats:
+                st.markdown("**Estadísticas resumidas**")
+                st.json(stats)
+        except Exception:
+            st.info("No se pudo parsear /dataset. Asegúrate de que el backend retorna sample y stats correctamente.")
+    else:
+        meta = get_json(backend_url, "/metadata")
+        if meta and meta.get("feature_names"):
+            fnames = meta.get("feature_names", [])
+            st.write(f"Metadata detectada con **{len(fnames)} features**.")
+            st.dataframe(pd.DataFrame(meta.get("feature_info", {})).head(20), use_container_width=True)
+        else:
+            st.info("No se encontró /dataset ni /metadata. Pide a tu compañera que exponga esos endpoints para ver más info aquí.")
+
+    st.markdown("---")
+
+    # Model blocks
+    for m in selected_models:
+        st.subheader(f"Modelo: {m}")
+        mi = get_json(backend_url, f"/model_info/{m}")
+        if mi:
+            # show simple metrics as cards
+            metrics = mi.get("metrics", {})
+            if metrics:
+                cols = st.columns(len(metrics))
+                for i, (k, v) in enumerate(metrics.items()):
+                    try:
+                        val = f"{v:.4f}" if isinstance(v, (int, float)) else str(v)
+                    except Exception:
+                        val = str(v)
+                    cols[i].metric(label=k, value=val)
+            # feature importance or coef
+            if show_details and mi.get("feature_importance"):
+                fi = mi.get("feature_importance")
+                fi_df = pd.DataFrame(list(fi.items()), columns=["feature", "importance"]).sort_values("importance", ascending=False)
+                st.markdown("**Importancia de variables (top 20)**")
+                fig = px.bar(fi_df.head(20), x="feature", y="importance", title=f"Importancia - {m}", color="importance", color_continuous_scale=px.colors.sequential.Viridis)
                 st.plotly_chart(fig, use_container_width=True)
+            elif show_details and mi.get("coef"):
+                coef = mi.get("coef")
+                coef_df = pd.DataFrame(list(coef.items()), columns=["feature", "coef"]).assign(abscoef=lambda d: d.coef.abs()).sort_values("abscoef", ascending=False)
+                st.markdown("**Coeficientes (top 20 por magnitud)**")
+                fig = px.bar(coef_df.head(20), x="feature", y="coef", title=f"Coeficientes - {m}", color="coef", color_continuous_scale=px.colors.diverging.Picnic)
+                st.plotly_chart(fig, use_container_width=True)
+            # preds sample
+            if mi.get("preds_sample"):
+                ps = pd.DataFrame(mi.get("preds_sample"))
+                if {"y_true", "y_pred"}.issubset(ps.columns):
+                    st.markdown("**y_true vs y_pred (sample)**")
+                    fig = px.scatter(ps, x="y_true", y="y_pred", trendline="ols", title=f"y_true vs y_pred - {m}")
+                    st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"No hay `/model_info/{m}` disponible en el backend. Implementándolo obtendrás métricas, importancias y gráficos aquí.")
 
-            with st.expander("Ver respuestas crudas (JSON)"):
-                st.json([p['raw'] for p in predictions])
+    st.markdown("---")
+    st.subheader("Visualizaciones generales")
+    if dataset_json and dataset_json.get("sample"):
+        df = pd.DataFrame(dataset_json.get("sample"))
+        tgt = dataset_json.get("target_col") or ("target" if "target" in df.columns else None)
+        if tgt and tgt in df.columns:
+            st.markdown(f"**Distribución de {tgt}**")
+            fig = px.histogram(df, x=tgt, nbins=40, title=f"Distribución de {tgt}", color_discrete_sequence=["#ff6a00"])
+            st.plotly_chart(fig, use_container_width=True)
+        num_cols = df.select_dtypes(include="number").columns.tolist()
+        if len(num_cols) >= 2:
+            corr = df[num_cols].corr()
+            st.markdown("**Matriz de correlación (numéricas)**")
+            fig = px.imshow(corr, text_auto=True, color_continuous_scale=px.colors.sequential.Blues)
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Para ver estadísticas y gráficas automáticas implementa GET /dataset que devuelva 'sample' y 'target_col'.")
 
-            # permitir descarga
-            csv_bytes = dfpred.to_csv(index=False).encode('utf-8')
-            st.download_button("Descargar predicciones CSV", csv_bytes, file_name="predicciones.csv")
+# ---------------------------
+# Right column: quick info & actions
+# ---------------------------
+with right:
+    st.subheader("Acciones rápidas")
+    st.markdown("- Ingresa la URL del backend en la sidebar.")
+    st.markdown("- Selecciona el algoritmo y haz click en 'Calcula tu esperanza de vida'.")
+    st.markdown("---")
+    st.markdown("**Modelos detectados**")
+    st.write(", ".join(available_models))
+    st.markdown("---")
+    st.info("Si el backend no responde, revisa CORS y que FastAPI esté corriendo. Este frontend espera JSONs concretos; pídeles la especificación a tu compañera si hay mismatches.")
 
-# Footer: ejemplos y especificación mínima para el backend
-with st.expander("Especificación mínima esperada del backend (ejemplos)"):
-    st.markdown("""
-    **GET /metadata**  -> devuelve:
-    ```json
-    {
-      "feature_names": ["age","bmi",...],
-      "feature_info": {"age": {"type": "numeric", "min": 0, "max": 120, "default": 30}, ...}
-    }
-    ```
+# ---------------------------
+# Prediction form (when user clicks)
+# ---------------------------
+if calc_button:
+    st.markdown("---")
+    st.header("🧾 Calcula tu esperanza de vida")
+    st.write("Rellena el formulario con tus datos. Se enviarán al backend para obtener la predicción.")
 
-    **GET /models** -> devuelve:
-    ```json
-    {"models": ["linear","ridge","lasso","elasticnet","decision_tree","random_forest"]}
-    ```
+    meta = get_json(backend_url, "/metadata")
+    if meta and meta.get("feature_info"):
+        feature_info = meta["feature_info"]
+    else:
+        st.warning("No hay metadata disponible. Introduce la especificación JSON manualmente (ej: {'age':{'type':'numeric','min':0,'max':120,'default':30}, ...})")
+        manual_spec = st.text_area("Spec JSON", height=200, value="{}")
+        try:
+            feature_info = json.loads(manual_spec) if manual_spec.strip() else {}
+        except Exception:
+            st.error("JSON inválido")
+            feature_info = {}
 
-    **POST /predict** -> payload:
-    ```json
-    {"model": "ridge", "input": {"age": 45, "bmi": 28.3, ...}}
-    ```
+    if not feature_info:
+        st.error("No hay features definidos (ni metadata ni spec manual). No puedo construir el formulario.")
+    else:
+        with st.form("predict_form"):
+            st.markdown("**Introduce tus valores**")
+            cols = st.columns(3)
+            inputs = {}
+            i = 0
+            for feat, info in feature_info.items():
+                col = cols[i % 3]
+                ftype = info.get("type", "numeric")
+                if ftype == "numeric":
+                    vmin = info.get("min", -1e6)
+                    vmax = info.get("max", 1e6)
+                    default = info.get("default", 0.0)
+                    try:
+                        val = col.number_input(feat, min_value=float(vmin), max_value=float(vmax), value=float(default))
+                    except Exception:
+                        # fallback if number_input can't handle bounds
+                        val = float(col.text_input(feat, value=str(default)))
+                    inputs[feat] = float(val)
+                elif ftype == "categorical":
+                    cats = info.get("categories", [])
+                    if cats:
+                        inputs[feat] = col.selectbox(feat, options=cats)
+                    else:
+                        inputs[feat] = col.text_input(feat, value=str(info.get("default", "")))
+                elif ftype == "boolean":
+                    inputs[feat] = col.checkbox(feat, value=bool(info.get("default", False)))
+                else:
+                    inputs[feat] = col.text_input(feat, value=str(info.get("default", "")))
+                i += 1
 
-    Respuesta esperada (ejemplo):
-    ```json
-    {"model": "ridge", "prediction": 12345.67, "metrics": {"RMSE": 100.2, "R2": 0.72}}
-    ```
-    """)
+            st.markdown("")
+            st.caption(f"Modelos a usar: {', '.join(selected_models)}")
+            submit = st.form_submit_button("Predecir 🚀")
 
+        if submit:
+            results = []
+            for mod in selected_models:
+                body = {"model": mod, "input": inputs}
+                resp = post_json(backend_url, "/predict", body)
+                if resp is None or resp.get("_error"):
+                    st.error(f"Error al predecir con {mod}: {resp.get('text') if isinstance(resp, dict) else 'No response'}")
+                    continue
+                prediction = resp.get("prediction")
+                metrics = resp.get("metrics", {})
+                results.append({"model": mod, "prediction": prediction, "metrics": metrics, "raw": resp})
+
+            if results:
+                dfres = pd.DataFrame([{"Modelo": r["model"], "Predicción": r["prediction"]} for r in results])
+                st.success("Predicciones completadas")
+                lc, rc = st.columns([1,2])
+                with lc:
+                    for r in results:
+                        st.metric(label=r["model"], value=str(r["prediction"]))
+                with rc:
+                    fig = px.bar(dfres, x="Modelo", y="Predicción", title="Comparación de predicciones", color="Predicción", color_continuous_scale=px.colors.sequential.OrRd)
+                    st.plotly_chart(fig, use_container_width=True)
+                with st.expander("Respuestas crudas (raw JSON)"):
+                    st.json([r["raw"] for r in results])
+                st.download_button("Descargar predicciones (CSV)", dfres.to_csv(index=False).encode("utf-8"), file_name="predicciones_vida.csv")
+
+# ---------------------------
+# Footer
+# ---------------------------
 st.markdown("---")
-st.caption("Frontend creado para integrarse con un backend FastAPI. Si quieres que adapte la app a un esquema de metadata o endpoints concreto que tu compañera vaya a implementar, dímelo y lo adapto.")
+st.caption("Interfaz diseñada para integrarse con FastAPI (GET /metadata, GET /models, POST /predict, opcional /dataset y /model_info/{model}). Si quieres colores o layout distinto, dime la paleta y lo adapto.")
