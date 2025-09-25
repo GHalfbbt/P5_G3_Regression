@@ -51,6 +51,7 @@ venv.bak/
 
 # Dataframes / datasets
 data/*
+data/processed/*
 !data/life_expectancy_data.csv
 
 
@@ -61,5 +62,10 @@ src/**/__pycache__/
 *.log
 *.tmp
 *.cache/
+
+# --- Gráficos / imágenes ---
+*.png
+*.jpg
+*.jpeg
 
 
