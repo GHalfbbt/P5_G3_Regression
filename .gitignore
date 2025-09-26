@@ -1,12 +1,8 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[codz]
-*$py.class
-
 # C extensions
 *.so
 
-# Distribution / packaging
+# Distribution / packaging 
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -16,9 +12,6 @@ __pycache__/
 .dist-info/
 build/
 dist/
-
-
-
 
 
 
@@ -50,8 +43,18 @@ env.bak/
 venv.bak/
 
 # Dataframes / datasets
-data/*
+data/*.csv
+data/processed/*.csv
 !data/life_expectancy_data.csv
+!data/processed/features_scaled.csv
+!data/processed/features_no_scaling.csv
+!data/processed/target_y.csv
+
+
+
+
+#models/*.pkl
+*.joblib
 
 
 # -------- Src --------
@@ -61,5 +64,10 @@ src/**/__pycache__/
 *.log
 *.tmp
 *.cache/
+
+# --- Gráficos / imágenes ---
+*.png
+*.jpg
+*.jpeg
 
 
