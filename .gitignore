@@ -53,6 +53,7 @@ venv.bak/
 data/*
 data/processed/*
 !data/life_expectancy_data.csv
+models/*.pkl
 
 
 # -------- Src --------
