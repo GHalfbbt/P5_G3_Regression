@@ -28,12 +28,21 @@ Nuestro objetivo es **predecir la esperanza de vida** a partir de indicadores so
 ```bash
 P5_G3_Regression/
 │── data/ # datasets (train/test)
-│── notebooks/ # notebooks de cada compañero
+│── notebooks/ # notebooks de cada algoritmo evaluado
 │ ├── notebook_A.ipynb
 │ ├── notebook_B.ipynb
 │ └── ...
 │── docs/ # documentos (PDF investigación, plan de trabajo, etc.)
-│── src/ # funciones auxiliares en Python (opcional)
+├── src/                      # scripts del pipeline
+│   ├── __init__.py
+│   ├── preprocess.py         # limpieza + escalado + encoding
+│   ├── train_model.py        # entrenamiento modelos - crea *.pkl
+│   ├── predict.py            # cargar modelo y predecir
+│   └── app.py                # PMV con Streamlit
+│
+├── models/                   # modelos guardados (son generados)
+│   └── xgb_model.pkl
+│
 │── requirements.txt # dependencias del proyecto
 │── README.md # descripción del proyecto
 ```
