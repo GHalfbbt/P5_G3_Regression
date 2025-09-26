@@ -46,7 +46,14 @@ venv.bak/
 data/*.csv
 data/processed/*.csv
 !data/life_expectancy_data.csv
-models/*.pkl
+!data/processed/features_scaled.csv
+!data/processed/features_no_scaling.csv
+!data/processed/target_y.csv
+
+
+
+
+#models/*.pkl
 *.joblib
 
 
