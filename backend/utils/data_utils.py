@@ -1,6 +1,6 @@
 import pandas as pd
 
-DATA_PATH = "data/dataset.csv"
+DATA_PATH = "data/life_expectancy_data.csv"
 
 def get_metadata():
     # Ajusta según el dataset real
