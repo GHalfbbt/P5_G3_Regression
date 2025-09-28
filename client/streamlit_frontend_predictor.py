@@ -124,28 +124,32 @@ def post_json(url: str, path: str, body: dict, timeout: int = 8) -> dict:
 # ---------------------------
 with st.sidebar:
     st.title("🔬 Model Playground")
-    st.markdown("Selecciona un algoritmo para ver información y realizar predicciones.")
+    st.markdown("Selecciona un modelo para ver información y realizar predicciones.")
     backend_url = st.text_input("Backend base URL", value="http://localhost:8000")
     st.caption("El backend debe exponer GET /metadata, GET /models, POST /predict. Opcional: /dataset, /model_info/{model}")
     st.markdown("---")
 
-    model_menu = st.radio(
-        "Algoritmos",
-        options=[
-            "Regresión Lineal",
-            "Ridge / Lasso / ElasticNet",
-            "Árbol de Decisión",
-            "Random Forest",
-            "XGBoost"
-        ],
-        index=0
+    # Modelos dinámicos
+    models_meta = get_json(backend_url, "/models")
+    if models_meta and isinstance(models_meta, dict):
+        available_models = models_meta.get("models", [])
+    else:
+        available_models = []
+
+    if not available_models:
+        st.warning("⚠️ No se detectaron modelos en el backend.")
+        available_models = ["linear"]
+
+    selected_models = st.multiselect(
+        "Selecciona modelos",
+        options=available_models,
+        default=[available_models[0]] if available_models else []
     )
 
     st.markdown("---")
-    compare_all = st.checkbox("Comparar todos los modelos detectados", value=False)
     show_details = st.checkbox("Mostrar coeficientes/importancias (si disponibles)", value=True)
-    st.markdown("---")
     calc_button = st.button("🧾 Calcula tu esperanza de vida")
+
 
 # ---------------------------
 # Resolve available models
