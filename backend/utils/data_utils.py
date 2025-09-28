@@ -36,6 +36,22 @@ def get_metadata():
 def get_dataset_sample(n=5):
     try:
         df = pd.read_csv(DATA_PATH)
-        return {"sample": df.sample(n).to_dict(orient="records")}
-    except Exception:
-        return {"sample": []}
+
+        # Reemplazar inf y NaN por None
+        df = df.replace([float("inf"), float("-inf")], None)
+        df = df.where(pd.notna(df), None)
+
+        # Convertir a lista de diccionarios limpia
+        records = df.sample(n).to_dict(orient="records")
+
+        # Asegurarse de que todos los valores NaN -> None
+        clean_records = []
+        for row in records:
+            clean_row = {k: (None if pd.isna(v) else v) for k, v in row.items()}
+            clean_records.append(clean_row)
+
+        return {"sample": clean_records}
+
+    except Exception as e:
+        return {"sample": [], "error": str(e)}
+

@@ -279,60 +279,48 @@ with right:
 # ---------------------------
 # Prediction form (when user clicks)
 # ---------------------------
+# ---------------------------
+# Prediction form (when user clicks)
+# ---------------------------
 if calc_button:
     st.markdown("---")
     st.header("🧾 Calcula tu esperanza de vida")
     st.write("Rellena el formulario con tus datos. Se enviarán al backend para obtener la predicción.")
 
     meta = get_json(backend_url, "/metadata")
-    if meta and meta.get("feature_info"):
-        feature_info = meta["feature_info"]
+    if meta and meta.get("features"):
+        feature_info = meta["features"]  # lista de dicts [{name,type}, ...]
     else:
-        st.warning("No hay metadata disponible. Introduce la especificación JSON manualmente (ej: {'age':{'type':'numeric','min':0,'max':120,'default':30}, ...})")
-        manual_spec = st.text_area("Spec JSON", height=200, value="{}")
-        try:
-            feature_info = json.loads(manual_spec) if manual_spec.strip() else {}
-        except Exception:
-            st.error("JSON inválido")
-            feature_info = {}
+        feature_info = []
+        st.error("No hay metadata disponible desde el backend.")
 
     if not feature_info:
-        st.error("No hay features definidos (ni metadata ni spec manual). No puedo construir el formulario.")
+        st.error("No hay features definidos. No puedo construir el formulario.")
     else:
         with st.form("predict_form"):
             st.markdown("**Introduce tus valores**")
             cols = st.columns(3)
             inputs = {}
             i = 0
-            for feat, info in feature_info.items():
+            for f in feature_info:
+                feat = f["name"]
+                ftype = f.get("type", "float")
                 col = cols[i % 3]
-                ftype = info.get("type", "numeric")
-                if ftype == "numeric":
-                    vmin = info.get("min", -1e6)
-                    vmax = info.get("max", 1e6)
-                    default = info.get("default", 0.0)
-                    try:
-                        val = col.number_input(feat, min_value=float(vmin), max_value=float(vmax), value=float(default))
-                    except Exception:
-                        # fallback if number_input can't handle bounds
-                        val = float(col.text_input(feat, value=str(default)))
+
+                if ftype in ("float", "int"):
+                    val = col.number_input(feat, value=0.0 if ftype == "float" else 0)
                     inputs[feat] = float(val)
-                elif ftype == "categorical":
-                    cats = info.get("categories", [])
-                    if cats:
-                        inputs[feat] = col.selectbox(feat, options=cats)
-                    else:
-                        inputs[feat] = col.text_input(feat, value=str(info.get("default", "")))
-                elif ftype == "boolean":
-                    inputs[feat] = col.checkbox(feat, value=bool(info.get("default", False)))
+                elif ftype == "string":
+                    inputs[feat] = col.text_input(feat, value="")
                 else:
-                    inputs[feat] = col.text_input(feat, value=str(info.get("default", "")))
+                    inputs[feat] = col.text_input(feat, value="")
+
                 i += 1
 
-            st.markdown("")
             st.caption(f"Modelos a usar: {', '.join(selected_models)}")
             submit = st.form_submit_button("Predecir 🚀")
 
+        # 👇 este bloque va fuera del `with st.form`
         if submit:
             results = []
             for mod in selected_models:
@@ -348,19 +336,24 @@ if calc_button:
             if results:
                 dfres = pd.DataFrame([{"Modelo": r["model"], "Predicción": r["prediction"]} for r in results])
                 st.success("Predicciones completadas")
-                lc, rc = st.columns([1,2])
+                lc, rc = st.columns([1, 2])
                 with lc:
                     for r in results:
                         st.metric(label=r["model"], value=str(r["prediction"]))
                 with rc:
-                    fig = px.bar(dfres, x="Modelo", y="Predicción", title="Comparación de predicciones", color="Predicción", color_continuous_scale=px.colors.sequential.OrRd)
+                    fig = px.bar(
+                        dfres,
+                        x="Modelo",
+                        y="Predicción",
+                        title="Comparación de predicciones",
+                        color="Predicción",
+                        color_continuous_scale=px.colors.sequential.OrRd
+                    )
                     st.plotly_chart(fig, use_container_width=True)
                 with st.expander("Respuestas crudas (raw JSON)"):
                     st.json([r["raw"] for r in results])
-                st.download_button("Descargar predicciones (CSV)", dfres.to_csv(index=False).encode("utf-8"), file_name="predicciones_vida.csv")
-
-# ---------------------------
-# Footer
-# ---------------------------
-st.markdown("---")
-st.caption("Interfaz diseñada para integrarse con FastAPI (GET /metadata, GET /models, POST /predict, opcional /dataset y /model_info/{model}). Si quieres colores o layout distinto, dime la paleta y lo adapto.")
+                st.download_button(
+                    "Descargar predicciones (CSV)",
+                    dfres.to_csv(index=False).encode("utf-8"),
+                    file_name="predicciones_vida.csv"
+                )
