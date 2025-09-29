@@ -129,14 +129,17 @@ with st.sidebar:
     st.caption("El backend debe exponer GET /metadata, GET /models, POST /predict. Opcional: /dataset, /model_info/{model}")
     st.markdown("---")
 
+    # --- SEPARATED ALGORITHMS HERE ---
     model_menu = st.radio(
         "Algoritmos",
         options=[
             "Regresión Lineal",
-            "Ridge / Lasso / ElasticNet",
+            "Ridge",
+            "Lasso",
+            "ElasticNet",
             "Árbol de Decisión",
             "Random Forest",
-            "XGBoost"
+            "XGBoost "
         ],
         index=0
     )
@@ -157,12 +160,16 @@ else:
     # fallback defaults
     available_models = ["linear", "ridge", "lasso", "elasticnet", "decision_tree", "random_forest", "xgboost"]
 
+# --- updated menu_map to match separated options ---
 menu_map = {
     "Regresión Lineal": ["linear"],
-    "Ridge / Lasso / ElasticNet": ["ridge", "lasso", "elasticnet"],
+    "Ridge": ["ridge"],
+    "Lasso": ["lasso"],
+    "ElasticNet": ["elasticnet"],
     "Árbol de Decisión": ["decision_tree"],
-    "Random Forest": ["random_forest"],
-    "XGBoost": ["xgboost"]
+    "Random Forest baseline": ["rf_baseline"],
+    "XGBoost": ["xgb_baseline"]
+    
 }
 
 selected_models = menu_map.get(model_menu, ["linear"])
@@ -353,22 +360,52 @@ if st.session_state.get('predicted', False):
         results.append({"model": mod, "prediction": prediction, "metrics": metrics, "raw": resp})
 
     if results:
-        dfres = pd.DataFrame([{"Modelo": r["model"], "Predicción": r["prediction"]} for r in results])
+        # Build dataframe with rounded numeric predictions
+        rows = []
+        for r in results:
+            pred = r["prediction"]
+            if isinstance(pred, (int, float)):
+                pred_rounded = round(float(pred), 2)
+            else:
+                # try to convert string numbers
+                try:
+                    pred_rounded = round(float(pred), 2)
+                except Exception:
+                    pred_rounded = pred
+            rows.append({"Modelo": r["model"], "Predicción": pred_rounded})
+
+        dfres = pd.DataFrame(rows)
+
         st.success("✅ Predicciones completadas")
 
         lc, rc = st.columns([1,2])
         with lc:
-            for r in results:
-                st.metric(label=r["model"], value=str(r["prediction"]))
+            for r in rows:
+                try:
+                    # If numeric, format with 2 decimals + 'años'
+                    if isinstance(r["Predicción"], (int, float)):
+                        formatted_pred = f"{r['Predicción']:.2f} años"
+                    else:
+                        formatted_pred = str(r["Predicción"])
+                except Exception:
+                    formatted_pred = str(r["Predicción"])
+                st.metric(label=r["Modelo"], value=formatted_pred)
         with rc:
-            fig = px.bar(dfres, x="Modelo", y="Predicción", title="Comparación de predicciones",
-                         color="Predicción", color_continuous_scale=px.colors.sequential.OrRd)
+            # ensure plot uses numeric column if possible
+            try:
+                # attempt to convert Predicción to numeric for plotting
+                dfres_plot = dfres.copy()
+                dfres_plot["Predicción_num"] = pd.to_numeric(dfres_plot["Predicción"], errors="coerce")
+                fig = px.bar(dfres_plot, x="Modelo", y="Predicción_num", title="Comparación de predicciones", color="Predicción_num", color_continuous_scale=px.colors.sequential.OrRd)
+                fig.update_yaxes(title_text="Predicción (años)")
+            except Exception:
+                # fallback to plotting the raw Predicción column
+                fig = px.bar(dfres, x="Modelo", y="Predicción", title="Comparación de predicciones")
             st.plotly_chart(fig, use_container_width=True)
         with st.expander("Respuestas crudas (raw JSON)"):
             st.json([r["raw"] for r in results])
-        st.download_button("Descargar predicciones (CSV)", dfres.to_csv(index=False).encode("utf-8"),
-                           file_name="predicciones_vida.csv")
-
+        # Download CSV
+        st.download_button("Descargar predicciones (CSV)", dfres.to_csv(index=False).encode("utf-8"), file_name="predicciones_vida.csv")
 
 # ---------------------------
 # Footer
