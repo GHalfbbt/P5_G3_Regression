@@ -7,3 +7,6 @@ xgboost
 lightgbm
 optuna
 jupyterlab
+ipykernel
+tabulate
+missingno
