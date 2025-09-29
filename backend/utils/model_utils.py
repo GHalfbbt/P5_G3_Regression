@@ -34,29 +34,39 @@ def load_model(model_name: str):
     raise FileNotFoundError(f"No existe el modelo: '{model_name}' en {MODELS_DIR}")
 
 
-def _to_dataframe_in_feature_order(input_dict: Dict[str, Any]) -> pd.DataFrame:
-    """Crea un DataFrame de una fila ordenando columnas según metadata.feature_names."""
-    meta = get_metadata()
-    cols = meta["feature_names"]
+def _to_dataframe_in_feature_order(input_data: dict, feature_names: list) -> pd.DataFrame:
+    """Convierte el diccionario del frontend a un DataFrame con las mismas columnas que el modelo espera"""
+    metadata = get_metadata()
+    countries = metadata["feature_info"]["Country"]["categories"]
 
-    missing = [c for c in cols if c not in input_dict]
-    if missing:
-        raise ValueError(f"Faltan campos en 'input': {missing}. Se esperan: {cols}")
+    # Separamos el valor de país del resto
+    country_value = input_data.pop("Country", None)
 
-    # Mantén exactamente este orden
-    row = [input_dict[c] for c in cols]
-    return pd.DataFrame([row], columns=cols)
+    # One-hot encoding manual
+    country_features = {f"Country_{c}": 0 for c in countries}
+    if country_value in countries:
+        country_features[f"Country_{country_value}"] = 1
+
+    # Combinamos todo
+    full_data = {**input_data, **country_features}
+
+    # Crear DataFrame en el orden esperado
+    df = pd.DataFrame([full_data])[feature_names]
+
+    return df
+
 
 
 def predict_with_model(model_name: str, input_dict: Dict[str, Any]) -> float:
-    """
-    Realiza una predicción garantizando el orden de columnas y usando DataFrame.
-    Compatible con modelos de sklearn y Pipelines con ColumnTransformer.
-    """
     model = load_model(model_name)
-    X = _to_dataframe_in_feature_order(input_dict)
+
+    # Usar directamente el DataFrame con las features "crudas"
+    X = pd.DataFrame([input_dict])
+
     y_pred = model.predict(X)
     return float(np.asarray(y_pred).ravel()[0])
+
+
 
 
 def get_model_info(model_name: str) -> Optional[Dict[str, Any]]:

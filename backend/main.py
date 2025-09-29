@@ -2,8 +2,22 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from utils.model_utils import get_available_models, load_model, get_model_info, predict_with_model
 from utils.data_utils import get_metadata, get_dataset_sample
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+origins = [
+    "http://localhost:8501",  # Streamlit default port
+    "http://127.0.0.1:8501",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # o ["*"] para pruebas
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Endpoint: /metadata
 @app.get("/metadata")
@@ -37,7 +51,10 @@ class PredictRequest(BaseModel):
 @app.post("/predict")
 def predict(req: PredictRequest):
     try:
+        print("➡️ Predict request:", req.model, req.input)  # 👈 debug
         pred = predict_with_model(req.model, req.input)
+        print("⬅️ Prediction:", pred)  # 👈 debug
         return {"prediction": pred}
     except Exception as e:
+        print("❌ Error en predicción:", str(e))  # 👈 debug
         raise HTTPException(status_code=400, detail=str(e))
