@@ -5,7 +5,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-import json
 import plotly.express as px
 from typing import Dict, Any, Optional
 
@@ -24,25 +23,18 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-/* Background gradient for the main app area */
 [data-testid="stAppViewContainer"] {
     background: linear-gradient(180deg, #0f1724 0%, #0b2545 40%, #07132a 100%);
     color: #e6eef8;
 }
-
-/* Sidebar gradient and styling */
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #061226 0%, #08263a 50%, #0b3a4d 100%);
     color: #f1f7ff;
     padding-top: 1rem;
 }
-
-/* Title inside sidebar */
 section[data-testid="stSidebar"] .css-1d391kg { 
     color: #fff;
 }
-
-/* Button gradient in sidebar */
 section[data-testid="stSidebar"] .stButton>button {
     background: linear-gradient(90deg,#36d1dc,#5b86e5);
     color: white;
@@ -55,8 +47,6 @@ section[data-testid="stSidebar"] .stButton>button {
 section[data-testid="stSidebar"] .stButton>button:hover {
     transform: translateY(-2px);
 }
-
-/* Primary buttons in main area */
 .stButton>button {
     background: linear-gradient(90deg,#ff6a00,#ee0979);
     color: white;
@@ -69,8 +59,6 @@ section[data-testid="stSidebar"] .stButton>button:hover {
 .stButton>button:hover {
     transform: translateY(-2px);
 }
-
-/* Cards/metrics style */
 .stMetric > div {
     background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
     padding: 12px;
@@ -78,18 +66,12 @@ section[data-testid="stSidebar"] .stButton>button:hover {
     color: #f7fbff;
     box-shadow: 0 8px 24px rgba(2,6,23,0.6);
 }
-
-/* Headings color */
 h1, h2, h3, h4, h5 {
     color: #f3f9ff;
 }
-
-/* Tables backgrounds */
 .stDataFrame table {
     background: rgba(255,255,255,0.02);
 }
-
-/* Small helper tweaks */
 .css-1lcbmhc { gap: .6rem; }
 </style>
 """,
@@ -105,17 +87,24 @@ def get_json(url: str, path: str, timeout: int = 4) -> Optional[dict]:
         r = requests.get(url.rstrip("/") + path, timeout=timeout)
         if r.status_code == 200:
             return r.json()
+        else:
+            return None
     except Exception:
         return None
-    return None
 
 def post_json(url: str, path: str, body: dict, timeout: int = 8) -> dict:
     try:
         r = requests.post(url.rstrip("/") + path, json=body, timeout=timeout)
+        # Try to parse JSON even on non-200 to show useful debug info
+        try:
+            payload = r.json()
+        except Exception:
+            payload = {"_text": r.text, "_status": r.status_code}
         if r.status_code == 200:
-            return r.json()
+            return payload
         else:
-            return {"_error": True, "status": r.status_code, "text": r.text}
+            # include status and text for debugging
+            return {"_error": True, "status": r.status_code, "text": payload}
     except Exception as e:
         return {"_error": True, "text": str(e)}
 
@@ -129,7 +118,7 @@ with st.sidebar:
     st.caption("El backend debe exponer GET /metadata, GET /models, POST /predict. Opcional: /dataset, /model_info/{model}")
     st.markdown("---")
 
-    # Modelos dinámicos
+    # Modelos dinámicos desde backend
     models_meta = get_json(backend_url, "/models")
     if models_meta and isinstance(models_meta, dict):
         available_models = models_meta.get("models", [])
@@ -149,29 +138,6 @@ with st.sidebar:
     st.markdown("---")
     show_details = st.checkbox("Mostrar coeficientes/importancias (si disponibles)", value=True)
     calc_button = st.button("🧾 Calcula tu esperanza de vida")
-
-
-# ---------------------------
-# Resolve available models
-# ---------------------------
-models_meta = get_json(backend_url, "/models")
-if models_meta and isinstance(models_meta, dict):
-    available_models = models_meta.get("models", [])
-else:
-    # fallback defaults
-    available_models = ["linear", "ridge", "lasso", "elasticnet", "decision_tree", "random_forest", "xgboost"]
-
-menu_map = {
-    "Regresión Lineal": ["linear"],
-    "Ridge / Lasso / ElasticNet": ["ridge", "lasso", "elasticnet"],
-    "Árbol de Decisión": ["decision_tree"],
-    "Random Forest": ["random_forest"],
-    "XGBoost": ["xgboost"]
-}
-
-selected_models = menu_map.get(model_menu, ["linear"])
-if compare_all:
-    selected_models = available_models
 
 # ---------------------------
 # Main layout
@@ -228,24 +194,17 @@ with left:
                     cols[i].metric(label=k, value=val)
             # feature importance or coef
             if show_details and mi.get("feature_importance"):
-                fi = mi.get("feature_importance")
+                fi = mi["feature_importance"]
                 fi_df = pd.DataFrame(list(fi.items()), columns=["feature", "importance"]).sort_values("importance", ascending=False)
                 st.markdown("**Importancia de variables (top 20)**")
                 fig = px.bar(fi_df.head(20), x="feature", y="importance", title=f"Importancia - {m}", color="importance", color_continuous_scale=px.colors.sequential.Viridis)
                 st.plotly_chart(fig, use_container_width=True)
-            elif show_details and mi.get("coef"):
-                coef = mi.get("coef")
+            elif show_details and mi.get("coefficients"):
+                coef = mi["coefficients"]
                 coef_df = pd.DataFrame(list(coef.items()), columns=["feature", "coef"]).assign(abscoef=lambda d: d.coef.abs()).sort_values("abscoef", ascending=False)
                 st.markdown("**Coeficientes (top 20 por magnitud)**")
                 fig = px.bar(coef_df.head(20), x="feature", y="coef", title=f"Coeficientes - {m}", color="coef", color_continuous_scale=px.colors.diverging.Picnic)
                 st.plotly_chart(fig, use_container_width=True)
-            # preds sample
-            if mi.get("preds_sample"):
-                ps = pd.DataFrame(mi.get("preds_sample"))
-                if {"y_true", "y_pred"}.issubset(ps.columns):
-                    st.markdown("**y_true vs y_pred (sample)**")
-                    fig = px.scatter(ps, x="y_true", y="y_pred", trendline="ols", title=f"y_true vs y_pred - {m}")
-                    st.plotly_chart(fig, use_container_width=True)
         else:
             st.info(f"No hay `/model_info/{m}` disponible en el backend. Implementándolo obtendrás métricas, importancias y gráficos aquí.")
 
@@ -253,17 +212,21 @@ with left:
     st.subheader("Visualizaciones generales")
     if dataset_json and dataset_json.get("sample"):
         df = pd.DataFrame(dataset_json.get("sample"))
-        tgt = dataset_json.get("target_col") or ("target" if "target" in df.columns else None)
-        if tgt and tgt in df.columns:
-            st.markdown(f"**Distribución de {tgt}**")
-            fig = px.histogram(df, x=tgt, nbins=40, title=f"Distribución de {tgt}", color_discrete_sequence=["#ff6a00"])
-            st.plotly_chart(fig, use_container_width=True)
         num_cols = df.select_dtypes(include="number").columns.tolist()
-        if len(num_cols) >= 2:
-            corr = df[num_cols].corr()
-            st.markdown("**Matriz de correlación (numéricas)**")
-            fig = px.imshow(corr, text_auto=True, color_continuous_scale=px.colors.sequential.Blues)
-            st.plotly_chart(fig, use_container_width=True)
+
+        for m in selected_models:
+            st.markdown(f"### Modelo: {m}")
+            tgt = dataset_json.get("target_col") or ("Life expectancy" if "Life expectancy" in df.columns else None)
+            if tgt and tgt in df.columns:
+                st.markdown(f"**Distribución de {tgt} para {m}**")
+                fig = px.histogram(df, x=tgt, nbins=40, title=f"Distribución de {tgt} — {m}", color_discrete_sequence=["#ff6a00"])
+                st.plotly_chart(fig, use_container_width=True)
+
+            if len(num_cols) >= 2:
+                corr = df[num_cols].corr()
+                st.markdown(f"**Matriz de correlación — {m}**")
+                fig = px.imshow(corr, text_auto=True, color_continuous_scale=px.colors.sequential.Blues, title=f"Correlación de variables — {m}")
+                st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Para ver estadísticas y gráficas automáticas implementa GET /dataset que devuelva 'sample' y 'target_col'.")
 
@@ -273,16 +236,13 @@ with left:
 with right:
     st.subheader("Acciones rápidas")
     st.markdown("- Ingresa la URL del backend en la sidebar.")
-    st.markdown("- Selecciona el algoritmo y haz click en 'Calcula tu esperanza de vida'.")
+    st.markdown("- Selecciona los modelos y haz click en 'Calcula tu esperanza de vida'.")
     st.markdown("---")
     st.markdown("**Modelos detectados**")
     st.write(", ".join(available_models))
     st.markdown("---")
-    st.info("Si el backend no responde, revisa CORS y que FastAPI esté corriendo. Este frontend espera JSONs concretos; pídeles la especificación a tu compañera si hay mismatches.")
+    st.info("Si el backend no responde, revisa CORS y que FastAPI esté corriendo. Este frontend espera JSONs concretos.")
 
-# ---------------------------
-# Prediction form (when user clicks)
-# ---------------------------
 # ---------------------------
 # Prediction form (when user clicks)
 # ---------------------------
@@ -291,6 +251,7 @@ if calc_button:
     st.header("🧾 Calcula tu esperanza de vida")
     st.write("Rellena el formulario con tus datos. Se enviarán al backend para obtener la predicción.")
 
+    # Pedimos metadata al backend (pero forzamos las 10 variables que quieres usar)
     meta = get_json(backend_url, "/metadata")
     if meta and meta.get("features"):
         feature_info = meta["features"]  # lista de dicts [{name,type}, ...]
@@ -301,22 +262,92 @@ if calc_button:
     if not feature_info:
         st.error("No hay features definidos. No puedo construir el formulario.")
     else:
+        # ---------------------------------------------------------
+        # Lista fija de 10 features (coincide con backend/utils/data_utils.py)
+        # ---------------------------------------------------------
+        desired_features = [
+           "HIV/AIDS",
+           "Income composition of resources",
+           "Country",
+           "Adult Mortality",
+           "under-five deaths",
+           "BMI",
+           "thinness 5-9 years",
+           "Diphtheria",
+           "infant deaths",
+           "Schooling"
+        ]
+
+        # Crear un map name->type a partir de feature_info recibida (por si hay tipos)
+        type_map = {f.get("name"): f.get("type", "float") for f in feature_info}
+
+        # Construir lista final de features a mostrar, respetando desired_features y tipos conocidos
+        form_features = []
+        for fname in desired_features:
+            ftype = type_map.get(fname, "float" if fname != "Country" else "string")
+            form_features.append({"name": fname, "type": ftype})
+
+        # ---------------------------
+        # FORM: un solo selectbox para Country + inputs para las demás 9 features
+        # ---------------------------
         with st.form("predict_form"):
             st.markdown("**Introduce tus valores**")
             cols = st.columns(3)
-            inputs = {}
+            inputs: Dict[str, Any] = {}
             i = 0
-            for f in feature_info:
+
+            # Intentamos extraer lista de países desde /dataset
+            dataset = get_json(backend_url, "/dataset")
+            df_tmp = pd.DataFrame(dataset["sample"]) if dataset and dataset.get("sample") else pd.DataFrame()
+
+            # 1) si existe 'Country' en sample -> usamos sus valores
+            countries = []
+            if "Country" in df_tmp.columns:
+                try:
+                    countries = sorted([c for c in df_tmp["Country"].dropna().unique().tolist() if c is not None])
+                except Exception:
+                    countries = []
+
+            # 2) si no hay 'Country', pedimos /metadata y buscamos feature_names tipo Country_*
+            if not countries:
+                meta_for_countries = get_json(backend_url, "/metadata") or {}
+                feature_names = meta_for_countries.get("feature_names", []) or []
+                country_dummy_cols = [c for c in feature_names if isinstance(c, str) and c.startswith("Country_")]
+                if country_dummy_cols:
+                    countries = [c.replace("Country_", "") for c in country_dummy_cols]
+                    countries = sorted(countries)
+
+            # fallback final
+            if not countries:
+                countries = ["Unknown"]
+
+            # Colocamos el selectbox de Country en la primera columna (único desplegable)
+            country_selected = None
+            if any(f["name"].lower() == "country" for f in form_features):
+                country_selected = cols[0].selectbox("Country", countries)
+
+            # Construimos los inputs para el resto de features (omitiendo Country_* dummies)
+            for f in form_features:
                 feat = f["name"]
                 ftype = f.get("type", "float")
+
+                if feat.lower() == "country":
+                    inputs["Country"] = country_selected if country_selected is not None else countries[0]
+                    continue
+
                 col = cols[i % 3]
 
-                if ftype in ("float", "int"):
-                    val = col.number_input(feat, value=0.0 if ftype == "float" else 0)
-                    inputs[feat] = float(val)
-                elif ftype == "string":
-                    inputs[feat] = col.text_input(feat, value="")
+                # Números (int / float)
+                if str(ftype).lower() in ("float", "int", "number"):
+                    # heurística simple para enteros
+                    if str(ftype).lower() == "int" or any(x in feat.lower() for x in ("death", "infant", "under-five", "adult mortality")):
+                        val = col.number_input(feat, value=0, step=1)
+                        inputs[feat] = int(val)
+                    else:
+                        val = col.number_input(feat, value=0.0, format="%.2f")
+                        inputs[feat] = float(val)
                 else:
+                    # texto / string
                     inputs[feat] = col.text_input(feat, value="")
 
                 i += 1
@@ -324,40 +355,63 @@ if calc_button:
             st.caption(f"Modelos a usar: {', '.join(selected_models)}")
             submit = st.form_submit_button("Predecir 🚀")
 
-        # 👇 este bloque va fuera del `with st.form`
+        # ---------------------------
+        # Envío y manejo de respuesta
+        # ---------------------------
         if submit:
-            results = []
-            for mod in selected_models:
-                body = {"model": mod, "input": inputs}
-                resp = post_json(backend_url, "/predict", body)
-                if resp is None or resp.get("_error"):
-                    st.error(f"Error al predecir con {mod}: {resp.get('text') if isinstance(resp, dict) else 'No response'}")
-                    continue
-                prediction = resp.get("prediction")
-                metrics = resp.get("metrics", {})
-                results.append({"model": mod, "prediction": prediction, "metrics": metrics, "raw": resp})
+            # Validación mínima
+            missing = [f["name"] for f in form_features if f["name"] not in inputs]
+            if missing:
+                st.error(f"Faltan valores: {missing}")
+            else:
+                results = []
+                for mod in selected_models:
+                    body = {"model": mod, "input": inputs}
+                    resp = post_json(backend_url, "/predict", body)
+                    # manejo de errores explícito y mostrar respuesta cruda para debug
+                    if resp is None or resp.get("_error"):
+                        err_text = ""
+                        if isinstance(resp, dict):
+                            err_text = resp.get("text") or str(resp)
+                        else:
+                            err_text = "No response from backend"
+                        st.error(f"Error al predecir con {mod}: {err_text}")
+                        with st.expander(f"Respuesta cruda de /predict para {mod}"):
+                            st.write(resp)
+                        continue
 
-            if results:
-                dfres = pd.DataFrame([{"Modelo": r["model"], "Predicción": r["prediction"]} for r in results])
-                st.success("Predicciones completadas")
-                lc, rc = st.columns([1, 2])
-                with lc:
-                    for r in results:
-                        st.metric(label=r["model"], value=str(r["prediction"]))
-                with rc:
-                    fig = px.bar(
-                        dfres,
-                        x="Modelo",
-                        y="Predicción",
-                        title="Comparación de predicciones",
-                        color="Predicción",
-                        color_continuous_scale=px.colors.sequential.OrRd
+                    prediction = resp.get("prediction")
+                    # show raw when prediction missing
+                    if prediction is None:
+                        st.warning(f"No se recibió 'prediction' desde el backend para {mod}")
+                        with st.expander(f"Respuesta cruda de /predict para {mod}"):
+                            st.write(resp)
+                        continue
+
+                    metrics = resp.get("metrics", {})
+                    results.append({"model": mod, "prediction": prediction, "metrics": metrics, "raw": resp})
+
+                if results:
+                    dfres = pd.DataFrame([{"Modelo": r["model"], "Predicción": r["prediction"]} for r in results])
+                    st.success("Predicciones completadas")
+                    lc, rc = st.columns([1, 2])
+                    with lc:
+                        for r in results:
+                            st.metric(label=r["model"], value=str(r["prediction"]))
+                    with rc:
+                        fig = px.bar(
+                            dfres,
+                            x="Modelo",
+                            y="Predicción",
+                            title="Comparación de predicciones",
+                            color="Predicción",
+                            color_continuous_scale=px.colors.sequential.OrRd
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    with st.expander("Respuestas crudas (raw JSON)"):
+                        st.json([r["raw"] for r in results])
+                    st.download_button(
+                        "Descargar predicciones (CSV)",
+                        dfres.to_csv(index=False).encode("utf-8"),
+                        file_name="predicciones_vida.csv"
                     )
-                    st.plotly_chart(fig, use_container_width=True)
-                with st.expander("Respuestas crudas (raw JSON)"):
-                    st.json([r["raw"] for r in results])
-                st.download_button(
-                    "Descargar predicciones (CSV)",
-                    dfres.to_csv(index=False).encode("utf-8"),
-                    file_name="predicciones_vida.csv"
-                )
