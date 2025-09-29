@@ -138,8 +138,12 @@ with st.sidebar:
             "Lasso",
             "ElasticNet",
             "Árbol de Decisión",
-            "Random Forest",
-            "XGBoost "
+            "Random Forest baseline",
+            "Random Forest optimizado",
+            "XGBoost baseline",
+            "XGBoost optimizado",
+            "KNN",
+            
         ],
         index=0
     )
@@ -168,7 +172,11 @@ menu_map = {
     "ElasticNet": ["elasticnet"],
     "Árbol de Decisión": ["decision_tree"],
     "Random Forest baseline": ["rf_baseline"],
-    "XGBoost": ["xgb_baseline"]
+    "Random Forest optimizado": ["rf_gridsearchcv"],
+    "XGBoost baseline": ["xgb_baseline"],
+    "XGBoost optimizado": ["xgb_optuna"],
+    "KNN": ["knn"],
+
     
 }
 
